@@ -36,6 +36,14 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 研究总览、收据与商品、规则实验、关联结果、组合提案、研究留痕共 6 页。RunList 被总览和规则实验复用，RuleLink 被总览、结果与提案复用。业务实体 Product、ReceiptBatch、Receipt、RuleRun、BundleProposal 贯穿数据库、schema、service、route/API、store 与页面。Receipt 只属于所属批次，API 返回前 100 张样本用于核对。批次导入最多 5000 张，JSON 数组包含 `reference` 与 `items`；界面给出可改的两张收据示例，不支持真实第三方数据源直连。
 
+## 联合批次与重叠收据
+
+门店离线补传的批次常与旧批次重叠。规则实验可选多个批次联合研究（`batch_ids`，最多 20 个）。`backend/src/services/samples.py` 在计算前统一并集：同一 `reference` 且商品集合相同（忽略项顺序）只计一次；同一 `reference` 商品不一致则拒绝计算（HTTP 422），错误体 `detail` 携带 `message` 与 `conflicts[].sources`，逐条列出批次编号、名称与商品。重复副本固定归属编号最小的批次，因此批次提交顺序与数据库收据顺序都不改变结果。
+
+每次运行保存 `sample_report`：每批原始数量、重复数量、有效数量，以及原始总量、重复总量、有效样本总数和重叠编号数量。结果页与规则 CSV 顶部注释都显示这组口径。样本指纹只取排序后的有效篮子集合，调换批次或收据顺序后指纹与规则指标保持不变。
+
+旧数据迁移由 `backend/src/config/migrations.py` 在 PostgreSQL 启动时执行：为 `rule_runs` 补 `batch_ids`、`sample_report`（JSONB），旧记录回填 `batch_ids=[batch_id]`，`batch_id` 改为可空；`receipts.reference` 建索引。旧记录按原单批次复算；尚未重算的记录在 API 中仍以 `batch_ids=[batch_id]` 与按批计数返回（`sample_report.legacy=true`）。迁移步骤先检查再执行，可重复运行。
+
 ## 算法口径
 
 `backend/src/services/apriori.py` 是纯 Python 实现。输入为去重 SKU 集合的篮子列表、SKU 售价/成本、三个阈值和最大项集大小；输出频繁项集数量、各层候选通过数、关联规则、输入 SHA-256 指纹。Apriori 连接上层频繁项集，并要求全部 k−1 子集也频繁，再对真实篮子计数。最小次数是 `ceil(N * min_support)`。枚举非空前后件，按提升度、置信度、支持度及字典序稳定排序。
@@ -44,8 +52,11 @@ docker compose exec -T backend python -m scripts.seed_demo
 - confidence(A→B) = count(A∪B)/count(A)。
 - lift(A→B) = confidence/support(B)。
 - 理论毛利率 = (组合售价−组合成本)/组合售价；未扣折扣、损耗及陈列成本。
+- 联合批次先去重再计算：N 为有效样本总数，不是各批原始数量之和。
 
 空篮子、未知 SKU、非法阈值、少于 2 张导入数据会被拒绝；无规则是正常空结果。固定 seed `20261112` 产生演示篮子。运行记录保留批次、参数与结果指纹；提案复制规则快照，后续新运行不会改变已审核依据。算法度量共现，无法推断因果，也没有多重假设显著性保证。最多 4 项、5000 张篮子是本地研究配额，未经大规模负载测试。
+
+验证脚本在 `backend/tests/`：`python3 -m pytest tests`。覆盖跨批同编号去重、商品冲突拒绝并列来源、批次与收据顺序不影响指纹和规则、旧记录按原单批次复算、迁移幂等与 CSV 口径。
 
 ## 工程与本地开发
 
@@ -72,7 +83,7 @@ npm ci
 npm run build
 ```
 
-目录：`backend/src/{config,constants,models,schemas,services,controllers,routes,middlewares,utils}`；`backend/scripts/seed_demo.py`；`backend/migrations/`；`frontend/src/{api,stores,types,components/common,hooks,pages,router,utils,constants}`。`migrations/001_initial.sql` 说明首次启动 metadata 建表策略；本地演示未配 Alembic 增量升级，修改模型前应规划迁移。
+目录：`backend/src/{config,constants,models,schemas,services,controllers,routes,middlewares,utils}`；`backend/scripts/seed_demo.py`；`backend/migrations/`；`backend/tests/`；`frontend/src/{api,stores,types,components/common,hooks,pages,router,utils,constants}`。`migrations/001_initial.sql` 说明首次启动 metadata 建表策略；`backend/src/config/migrations.py` 在 PostgreSQL 启动时对旧库做幂等升级（补 `rule_runs.batch_ids`/`sample_report`、放开 `batch_id` 非空、回填旧运行、建收据 reference 索引），本地演示未配 Alembic 增量升级。
 
 环境变量见 `.env.example`：COMPOSE_PROJECT_NAME 隔离栈名；FRONTEND_PORT/BACKEND_PORT/DB_PORT 映射端口；POSTGRES_DB/USER/PASSWORD 配置库；JWT_SECRET 签名；SEED_DEMO 控制启动 seed。Compose 恰好 frontend/backend/worker/db/redis 5 个服务，全具健康检查，worker 使用定向 Celery ping。db-data、redis-data 与 artifacts 命名卷分别持久化库、队列、计算 JSON；API 与 worker 共享 artifacts。Nginx `/api/` 剥离前缀，API 原生路由不带 `/api`。
 

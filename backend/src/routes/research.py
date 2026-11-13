@@ -6,14 +6,13 @@ from src.controllers.research import export_rules,export_proposals
 from src.services import runs,proposals
 from src.schemas.run import RunInput
 from src.schemas.proposal import ProposalInput,ReviewInput
-from src.utils.serialize import row
 router=APIRouter(tags=['research'])
 @router.get('/runs')
 def all_runs(db:Session=Depends(get_db),user=Depends(current_user)): return runs.list_runs(db)
 @router.post('/runs',status_code=201)
 def queue(data:RunInput,db:Session=Depends(get_db),user=Depends(writers)): return runs.create_run(db,data,user)
 @router.get('/runs/{id}')
-def detail(id:int,db:Session=Depends(get_db),user=Depends(current_user)): return row(runs.get_run(db,id))
+def detail(id:int,db:Session=Depends(get_db),user=Depends(current_user)): return runs.with_batches(db,runs.get_run(db,id))
 @router.get('/runs/{id}/export')
 def export(id:int,db:Session=Depends(get_db),user=Depends(current_user)): return export_rules(db,id)
 @router.get('/proposals')

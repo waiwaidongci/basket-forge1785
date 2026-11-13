@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from redis import Redis
 from src.config.database import Base,engine
+from src.config.migrations import apply_migrations
 from src.config.settings import SEED_DEMO,REDIS_URL
 from src.models import *
 from src.middlewares.request_id import RequestIDMiddleware
@@ -11,7 +12,13 @@ from src.middlewares.errors import ErrorMiddleware
 from src.routes import auth,catalog,research,audit
 @asynccontextmanager
 async def lifespan(app):
+ # create_all is additive; the upgrade runner then patches older databases.
  Base.metadata.create_all(engine)
+ if engine.dialect.name=='postgresql':
+  try:
+   apply_migrations(engine)
+  except Exception:
+   logging.exception('Migration skipped; assuming metadata schema is current')
  if SEED_DEMO:
   try:
    from scripts.seed_demo import seed

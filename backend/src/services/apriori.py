@@ -8,6 +8,8 @@ def mine_rules(baskets,products,min_support=.05,min_confidence=.35,min_lift=1.,m
  transactions=[frozenset(b) for b in baskets]
  if any(not b for b in transactions): raise ValueError('收据不得为空')
  if any(not b.issubset(products) for b in transactions): raise ValueError('存在未知商品')
+ # Canonical, order-independent fingerprint input: receipt and item order do not matter.
+ canonical=sorted(sorted(t) for t in transactions)
  n=len(transactions);minimum=ceil(n*min_support-1e-12)
  universe=sorted(set().union(*transactions));counts={};previous=set()
  for sku in universe:
@@ -36,4 +38,4 @@ def mine_rules(baskets,products,min_support=.05,min_confidence=.35,min_lift=1.,m
     price=sum(products[s]['price'] for s in itemset);cost=sum(products[s]['cost'] for s in itemset)
     rules.append({'antecedent':sorted(antecedent),'consequent':sorted(consequent),'support_count':count,'support':count/n,'confidence':confidence,'lift':lift,'bundle_price':round(price,2),'gross_profit':round(price-cost,2),'margin':(price-cost)/price if price else 0})
  rules.sort(key=lambda x:(-x['lift'],-x['confidence'],-x['support'],x['antecedent'],x['consequent']))
- return {'receipt_count':n,'frequent_itemsets':len(counts),'level_counts':level_counts,'rules':rules,'checksum':hashlib.sha256(json.dumps([sorted(t) for t in transactions],sort_keys=True).encode()).hexdigest(),'method':'Apriori / binary basket presence / no causal claims','formulas':{'support':'count(A∪B)/N','confidence':'count(A∪B)/count(A)','lift':'confidence(A→B)/support(B)','margin':'(sum(price)-sum(cost))/sum(price)'}}
+ return {'receipt_count':n,'frequent_itemsets':len(counts),'level_counts':level_counts,'rules':rules,'checksum':hashlib.sha256(json.dumps(canonical,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'method':'Apriori / binary basket presence / no causal claims','formulas':{'support':'count(A∪B)/N','confidence':'count(A∪B)/count(A)','lift':'confidence(A→B)/support(B)','margin':'(sum(price)-sum(cost))/sum(price)'}}

@@ -6,5 +6,5 @@ class Receipt(Base):
  __table_args__=(UniqueConstraint('batch_id','reference'),)
  id:Mapped[int]=mapped_column(primary_key=True)
  batch_id:Mapped[int]=mapped_column(ForeignKey('receipt_batches.id'))
- reference:Mapped[str]=mapped_column(String(70))
+ reference:Mapped[str]=mapped_column(String(70),index=True)
  items:Mapped[list]=mapped_column(JSON)

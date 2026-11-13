@@ -4,6 +4,7 @@ from src.config.database import Base,engine,SessionLocal
 from src.models import *
 from src.utils.security import hash_password
 from src.services.apriori import mine_rules
+from src.services.samples import resolve_samples
 PRODUCTS=[('OAT','燕麦拿铁','饮品',15.,7.),('BREAD','全麦餐包','烘焙',9.,3.5),('YOG','原味酸奶','乳品',8.,4.),('NUT','每日坚果','零食',12.,5.),('TEA','乌龙冷萃','饮品',10.,3.),('RICE','海苔饭团','鲜食',7.,3.),('EGG','溏心鸡蛋','鲜食',5.,2.),('SAND','鸡肉三明治','鲜食',16.,8.),('APPLE','鲜切苹果','水果',8.,4.),('COOK','燕麦曲奇','烘焙',11.,4.),('WATER','山泉水','饮品',3.,1.),('CHOC','黑巧方块','零食',13.,5.)]
 def seed():
  Base.metadata.create_all(engine)
@@ -39,10 +40,10 @@ def seed():
     db.add_all([Receipt(batch_id=batch.id,**x) for x in generated]);db.commit()
   admin=db.scalar(select(User).where(User.role=='admin'))
   if not db.scalar(select(RuleRun).where(RuleRun.name=='秋季早餐基准研究')):
-   batch=db.scalar(select(ReceiptBatch).order_by(ReceiptBatch.id));baskets=list(db.scalars(select(Receipt.items).where(Receipt.batch_id==batch.id).order_by(Receipt.id)))
-   products={p.sku:{'price':p.price,'cost':p.cost} for p in db.scalars(select(Product))}
-   result=mine_rules(baskets,products,.05,.35,1.,3)
-   run=RuleRun(name='秋季早餐基准研究',batch_id=batch.id,min_support=.05,min_confidence=.35,min_lift=1.,max_size=3,status='succeeded',result=result,creator_id=admin.id);db.add(run);db.flush()
+   batch=db.scalar(select(ReceiptBatch).order_by(ReceiptBatch.id));products={p.sku:{'price':p.price,'cost':p.cost} for p in db.scalars(select(Product))}
+   baskets,report=resolve_samples(db,[batch.id],products)
+   result=mine_rules(baskets,products,.05,.35,1.,3);result['sample_report']=report
+   run=RuleRun(name='秋季早餐基准研究',batch_id=batch.id,batch_ids=[batch.id],sample_report=report,min_support=.05,min_confidence=.35,min_lift=1.,max_size=3,status='succeeded',result=result,creator_id=admin.id);db.add(run);db.flush()
    if result['rules']: db.add(BundleProposal(name='早餐温暖搭档 · 试点草案',run_id=run.id,rule=result['rules'][0],note='先在两家样板店验证陈列效果；关联不代表因果。',creator_id=admin.id))
    db.add(AuditLog(actor='seed',action='demo.created',detail={'receipts':1200,'seed':20261112}));db.commit()
   counts={t.__tablename__:db.scalar(select(func.count()).select_from(t)) for t in [User,Product,ReceiptBatch,Receipt,RuleRun,BundleProposal]}

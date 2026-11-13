@@ -3,3 +3,12 @@
 -- rule_runs, bundle_proposals, audit_logs. Natural keys: email, sku, batch name,
 -- and (batch_id, reference). Seed inserts only absent natural keys.
 -- This demo deliberately retains user edits when re-seeded.
+--
+-- Incremental upgrade for databases created by this initial scheme lives in
+-- backend/src/config/migrations.py and runs at PostgreSQL startup:
+--   rule_runs.batch_ids JSONB        merged batch list, legacy rows backfilled
+--                                    from batch_id so old runs stay single-batch
+--   rule_runs.sample_report JSONB    per-batch raw/duplicate/effective counts
+--   rule_runs.batch_id               legacy column, now nullable
+--   ix_receipts_reference            cross-batch reference lookup
+-- Every step inspects the schema first, so the upgrade is idempotent.

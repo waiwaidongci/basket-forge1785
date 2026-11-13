@@ -1,11 +1,18 @@
 from sqlalchemy.orm import Mapped,mapped_column
 from sqlalchemy import String,JSON,Float,Integer,ForeignKey,DateTime
+from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime,timezone
 from src.config.database import Base
+# The startup migration creates these two columns as JSONB on PostgreSQL; the variant keeps
+# SQLite (tests) on plain JSON while reading/writing the same shape.
+JSONVariant=JSON().with_variant(JSONB,'postgresql')
 class RuleRun(Base):
  __tablename__='rule_runs'
  id:Mapped[int]=mapped_column(primary_key=True)
- batch_id:Mapped[int]=mapped_column(ForeignKey('receipt_batches.id'))
+ # legacy single-batch column, kept in sync with the first entry of batch_ids
+ batch_id:Mapped[int]=mapped_column(ForeignKey('receipt_batches.id'),nullable=True,default=None)
+ batch_ids:Mapped[list]=mapped_column(JSONVariant,default=list)
+ sample_report:Mapped[dict]=mapped_column(JSONVariant,default=dict)
  name:Mapped[str]=mapped_column(String(100))
  status:Mapped[str]=mapped_column(String(20),default='queued')
  min_support:Mapped[float]=mapped_column(Float)
